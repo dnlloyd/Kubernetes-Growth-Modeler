@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
   Plus,
@@ -17,7 +18,7 @@ import {
   BarChart3,
   Download,
   Upload,
-  // Save,
+  Save,
   Calculator,
 } from "lucide-react";
 import {
@@ -28,14 +29,14 @@ import {
   YAxis,
   Tooltip,
   Legend,
-  // Cell,
+  Cell,
 } from "recharts";
 
 // ---------- Helpers ----------
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const STORAGE_KEY = "k8s-cluster-growth-model-v1";
 
-function clampNum(n: number, min = 0, max = Number.MAX_SAFE_INTEGER) {
+function clampNum(n, min = 0, max = Number.MAX_SAFE_INTEGER) {
   const num = Number.isFinite(+n) ? +n : 0;
   return Math.min(Math.max(num, min), max);
 }
@@ -51,7 +52,7 @@ export default function ClusterGrowthModeler() {
     return [
       {
         id: uid(),
-        name: "cluster-1",
+        name: "alva-prod",
         workloads: [
           { id: uid(), name: "web-frontend", cpuCores: 2, memoryGiB: 4, replicas: 5 },
           { id: uid(), name: "api-backend", cpuCores: 3, memoryGiB: 6, replicas: 3 },
@@ -60,7 +61,7 @@ export default function ClusterGrowthModeler() {
       },
       {
         id: uid(),
-        name: "cluster-2",
+        name: "rwcm-prod",
         workloads: [
           { id: uid(), name: "ingress-nginx", cpuCores: 1, memoryGiB: 1, replicas: 4 },
           { id: uid(), name: "metrics", cpuCores: 2, memoryGiB: 8, replicas: 2 },
@@ -95,17 +96,17 @@ export default function ClusterGrowthModeler() {
   }, [clusterTotals]);
 
   // ---------- Unit conversion ----------
-  const fmtCPU = (cores: number) => {
+  const fmtCPU = (cores) => {
     if (unitCPU === "millicores") return `${Math.round(cores * 1000)} m`;
     return `${cores.toFixed(2)} cores`;
   };
-  const fmtMem = (gib: number) => {
+  const fmtMem = (gib) => {
     if (unitMem === "MiB") return `${Math.round(gib * 1024)} MiB`;
     return `${gib.toFixed(2)} GiB`;
   };
 
-  const toUnitCPU = (cores: number) => (unitCPU === "millicores" ? cores * 1000 : cores);
-  const toUnitMem = (gib: number) => (unitMem === "MiB" ? gib * 1024 : gib);
+  const toUnitCPU = (cores) => (unitCPU === "millicores" ? cores * 1000 : cores);
+  const toUnitMem = (gib) => (unitMem === "MiB" ? gib * 1024 : gib);
 
   // ---------- Mutators ----------
   const addCluster = () => {
@@ -166,6 +167,56 @@ export default function ClusterGrowthModeler() {
           : c
       )
     );
+  };
+
+  // ---------- Drag & Drop (native HTML5) ----------
+  const [dragOverClusterId, setDragOverClusterId] = useState(null);
+
+  const moveWorkload = (sourceCid, wid, targetCid) => {
+    if (sourceCid === targetCid) return; // no-op
+    setClusters((prev) => {
+      // find source cluster and workload
+      const sourceIdx = prev.findIndex((c) => c.id === sourceCid);
+      const targetIdx = prev.findIndex((c) => c.id === targetCid);
+      if (sourceIdx === -1 || targetIdx === -1) return prev;
+      const source = prev[sourceIdx];
+      const target = prev[targetIdx];
+      const w = source.workloads.find((x) => x.id === wid);
+      if (!w) return prev;
+      // remove from source and append to target
+      const newSource = { ...source, workloads: source.workloads.filter((x) => x.id !== wid) };
+      const newTarget = { ...target, workloads: [...target.workloads, w] };
+      const next = [...prev];
+      next[sourceIdx] = newSource;
+      next[targetIdx] = newTarget;
+      return next;
+    });
+  };
+
+  const onDragStart = (e, payload) => {
+    e.dataTransfer.setData("application/json", JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const onDragOverCluster = (e, cid) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverClusterId(cid);
+  };
+
+  const onDragLeaveCluster = (cid) => {
+    setDragOverClusterId((cur) => (cur === cid ? null : cur));
+  };
+
+  const onDropToCluster = (e, targetCid) => {
+    e.preventDefault();
+    try {
+      const data = JSON.parse(e.dataTransfer.getData("application/json"));
+      if (data && data.type === "workload" && data.clusterId && data.workloadId) {
+        moveWorkload(data.clusterId, data.workloadId, targetCid);
+      }
+    } catch (_) {}
+    setDragOverClusterId(null);
   };
 
   // ---------- Import / Export ----------
@@ -244,6 +295,7 @@ export default function ClusterGrowthModeler() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Kubernetes Cluster Growth Modeler</h1>
             <p className="text-slate-600">Model CPU & Memory across clusters and workload groups. Totals update live. Data persists locally.</p>
+            <p className="mt-1 text-xs text-slate-500">Pro tip: drag a workload row and drop it onto another cluster’s table to move it. The destination highlights while dragging.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" onClick={addCluster}>
@@ -337,7 +389,13 @@ export default function ClusterGrowthModeler() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Workloads table */}
-                  <div className="overflow-hidden rounded-2xl border">
+                  <div
+                    className={`overflow-hidden rounded-2xl border transition-all ${dragOverClusterId===cluster.id?"ring-2 ring-indigo-400 shadow-lg":""}`}
+                    onDragOver={(e)=>onDragOverCluster(e, cluster.id)}
+                    onDragLeave={()=>onDragLeaveCluster(cluster.id)}
+                    onDrop={(e)=>onDropToCluster(e, cluster.id)}
+                    aria-label={`Drop workloads into ${cluster.name}`}
+                  >
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50 text-left">
                         <tr className="text-slate-600">
@@ -352,14 +410,19 @@ export default function ClusterGrowthModeler() {
                       <tbody>
                         {cluster.workloads.length === 0 && (
                           <tr>
-                            <td colSpan={6} className="px-3 py-6 text-center text-slate-500">No workloads yet. Add one below.</td>
+                            <td colSpan={6} className="px-3 py-6 text-center text-slate-500">No workloads yet. Drag one here or add one below.</td>
                           </tr>
                         )}
                         {cluster.workloads.map((w) => {
                           const totalCPU = w.cpuCores * w.replicas;
                           const totalMem = w.memoryGiB * w.replicas;
                           return (
-                            <tr key={w.id} className="border-t hover:bg-slate-50/40">
+                            <tr
+                              key={w.id}
+                              className="border-t hover:bg-slate-50/40 cursor-move"
+                              draggable
+                              onDragStart={(e)=>onDragStart(e,{type:"workload", clusterId: cluster.id, workloadId: w.id})}
+                            >
                               <td className="px-3 py-2">
                                 <Input
                                   value={w.name}
