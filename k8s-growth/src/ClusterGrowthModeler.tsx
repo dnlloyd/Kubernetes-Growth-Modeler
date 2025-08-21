@@ -33,6 +33,21 @@ function clampNum(n, min = 0, max = Number.MAX_SAFE_INTEGER) {
   return Math.min(Math.max(num, min), max);
 }
 
+// ---------- Retro palette (inspired by Atari vibes) ----------
+const RETRO = {
+  bg: "#0b0b12",
+  panel: "#141423",
+  border: "#2a2a40",
+  text: "#E7E7FF",
+  textDim: "#A7A7C7",
+  accent: "#FF3E3E", // neon red
+  accent2: "#FFB000", // amber/gold
+  accent3: "#00E5FF", // electric cyan
+  accent4: "#9C27FF", // purple
+  accent5: "#33FF57", // retro green
+};
+const BAR_COLORS = [RETRO.accent, RETRO.accent2, RETRO.accent3, RETRO.accent4, RETRO.accent5];
+
 export default function ClusterGrowthModeler() {
   const [clusters, setClusters] = useState(() => {
     try {
@@ -42,9 +57,9 @@ export default function ClusterGrowthModeler() {
     return [
       {
         id: uid(),
-        name: "cluster-1",
-        maxCpuCores: 0,
-        maxMemoryGiB: 0,
+        name: "alva-prod",
+        maxCpuCores: 100,
+        maxMemoryGiB: 500,
         workloads: [
           { id: uid(), name: "web-frontend", cpuCores: 2, memoryGiB: 4, replicas: 5 },
           { id: uid(), name: "api-backend", cpuCores: 3, memoryGiB: 6, replicas: 3 },
@@ -53,9 +68,9 @@ export default function ClusterGrowthModeler() {
       },
       {
         id: uid(),
-        name: "cluster-2",
-        maxCpuCores: 0,
-        maxMemoryGiB: 0,
+        name: "rwcm-prod",
+        maxCpuCores: 80,
+        maxMemoryGiB: 300,
         workloads: [
           { id: uid(), name: "ingress-nginx", cpuCores: 1, memoryGiB: 1, replicas: 4 },
           { id: uid(), name: "metrics", cpuCores: 2, memoryGiB: 8, replicas: 2 },
@@ -103,10 +118,12 @@ export default function ClusterGrowthModeler() {
         c.workloads.forEach((w) => {
           row[w.name] = toUnitCPU(w.cpuCores * w.replicas);
         });
+        // capacity for overlay if needed later
+        row.__capacity = toUnitCPU(c.maxCpuCores || 0);
         return row;
       });
     }
-    return clusterTotals.map((t) => ({ cluster: t.name, total: toUnitCPU(t.cpuCores) }));
+    return clusterTotals.map((t) => ({ cluster: t.name, total: toUnitCPU(t.cpuCores), __capacity: toUnitCPU((clusters.find(c=>c.id===t.id)?.maxCpuCores)||0) }));
   }, [clusters, clusterTotals, stackByWorkload, unitCPU]);
 
   const chartDataMem = useMemo(() => {
@@ -116,10 +133,11 @@ export default function ClusterGrowthModeler() {
         c.workloads.forEach((w) => {
           row[w.name] = toUnitMem(w.memoryGiB * w.replicas);
         });
+        row.__capacity = toUnitMem(c.maxMemoryGiB || 0);
         return row;
       });
     }
-    return clusterTotals.map((t) => ({ cluster: t.name, total: toUnitMem(t.memoryGiB) }));
+    return clusterTotals.map((t) => ({ cluster: t.name, total: toUnitMem(t.memoryGiB), __capacity: toUnitMem((clusters.find(c=>c.id===t.id)?.maxMemoryGiB)||0) }));
   }, [clusters, clusterTotals, stackByWorkload, unitMem]);
 
   const workloadKeys = useMemo(() => {
@@ -129,22 +147,10 @@ export default function ClusterGrowthModeler() {
   }, [clusters]);
 
   // Mutators
-  // const addCluster = () => setClusters((prev) => [...prev, { id: uid(), name: `cluster-${prev.length + 1}`, workloads: [] }]);
-  const addCluster = () =>
-  setClusters((prev) => [
-    ...prev,
-    { id: uid(), name: `cluster-${prev.length + 1}`, maxCpuCores: 0, maxMemoryGiB: 0, workloads: [] },
-  ]);
-
+  const addCluster = () => setClusters((prev) => [...prev, { id: uid(), name: `cluster-${prev.length + 1}`, maxCpuCores: 100, maxMemoryGiB: 100, workloads: [] }]);
   const removeCluster = (cid) => setClusters((prev) => prev.filter((c) => c.id !== cid));
-
-  const setClusterCapacity = (cid, field, value) =>
-    setClusters((prev) =>
-      prev.map((c) => (c.id === cid ? { ...c, [field]: clampNum(value) } : c))
-    );
-
-
   const updateClusterName = (cid, name) => setClusters((prev) => prev.map((c) => (c.id === cid ? { ...c, name } : c)));
+  const updateClusterField = (cid, field, value) => setClusters((prev) => prev.map((c) => (c.id === cid ? { ...c, [field]: clampNum(value) } : c)));
 
   const addWorkload = (cid) => {
     setClusters((prev) =>
@@ -202,18 +208,69 @@ export default function ClusterGrowthModeler() {
     });
   };
 
+  // ---------- Theming helpers ----------
+  const retroCard = "border-[1.5px] border-["+RETRO.border+"] bg-["+RETRO.panel+"] text-["+RETRO.text+"] shadow-[0_0_0_1px_rgba(255,255,255,0.02)]";
+  const retroBadge = "rounded-full border px-3 py-1 text-xs";
+
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      {/* Retro font & CRT effects */}
+      <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+      <style jsx global>{`
+        body { background: ${RETRO.bg}; color: ${RETRO.text}; }
+        .crt {
+          position: relative;
+          isolation: isolate;
+        }
+        .crt:before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: repeating-linear-gradient(
+            to bottom,
+            rgba(255,255,255,0.06) 0px,
+            rgba(255,255,255,0.06) 1px,
+            transparent 2px,
+            transparent 3px
+          );
+          mix-blend-mode: overlay;
+          pointer-events: none;
+          opacity: .25;
+        }
+        .scan-edge { box-shadow: inset 0 0 80px rgba(0,0,0,0.6); }
+        .pixel { font-family: 'VT323', monospace; letter-spacing: 0.5px; }
+        .btn-retro {
+          border: 1.5px solid ${RETRO.accent};
+          background: linear-gradient(180deg, rgba(255,62,62,0.15), rgba(255,62,62,0.05));
+          color: ${RETRO.text};
+        }
+        .btn-retro:hover { box-shadow: 0 0 0 2px ${RETRO.accent}33 inset; }
+        .btn-outline-retro {
+          border: 1.5px solid ${RETRO.accent3};
+          color: ${RETRO.accent3};
+          background: transparent;
+        }
+        .btn-outline-retro:hover { background: ${RETRO.accent3}11; }
+        .input-retro {
+          background: ${RETRO.bg};
+          border: 1.5px solid ${RETRO.border};
+          color: ${RETRO.text};
+        }
+        .input-retro:focus { outline: none; box-shadow: 0 0 0 2px ${RETRO.accent3}55; border-color: ${RETRO.accent3}; }
+        .label-retro { color: ${RETRO.textDim}; }
+        .badge-retro { border-color: ${RETRO.border}; background: ${RETRO.bg}; color: ${RETRO.textDim}; }
+      `}</style>
+
+      <div className="crt min-h-screen w-full p-6">
         <div className="mx-auto max-w-7xl space-y-6">
           <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Kubernetes Cluster Growth Modeler</h1>
-              <p className="text-slate-600">Drag to reorder or move workloads across clusters. Totals update live.</p>
+              <h1 className="pixel text-3xl font-bold tracking-tight" style={{color: RETRO.accent2}}>Kubernetes Cluster Growth Modeler</h1>
+              <p className="text-sm" style={{color: RETRO.textDim}}>Drag to reorder or move workloads across clusters. Totals update live.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" onClick={addCluster}><Plus className="mr-2 h-4 w-4" /> Add Cluster</Button>
-              <Button variant="outline" onClick={() => {
+              <Button className="btn-retro" onClick={addCluster}><Plus className="mr-2 h-4 w-4" /> Add Cluster</Button>
+              <Button className="btn-outline-retro" onClick={() => {
                 const blob = new Blob([JSON.stringify(clusters, null, 2)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
@@ -222,7 +279,7 @@ export default function ClusterGrowthModeler() {
                 a.click();
                 URL.revokeObjectURL(url);
               }}><Download className="mr-2 h-4 w-4" /> Export JSON</Button>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-50">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm shadow-sm hover:opacity-90" style={{borderColor: RETRO.accent4, color: RETRO.text}}>
                 <Upload className="h-4 w-4" /><span>Import JSON</span>
                 <input type="file" accept="application/json" className="hidden" onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -245,23 +302,23 @@ export default function ClusterGrowthModeler() {
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             <Stat title="Total CPU" value={fmtCPU(grandTotals.cpuCores)} subtitle="All clusters" />
             <Stat title="Total Memory" value={fmtMem(grandTotals.memoryGiB)} subtitle="All clusters" />
-            <div className="rounded-2xl border bg-white p-4">
+            <div className={`${retroCard} rounded-2xl p-4 scan-edge`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-medium">Units</div>
-                  <div className="text-xs text-slate-500">View conversions only</div>
+                  <div className="text-sm font-medium" style={{color: RETRO.text}}>Units</div>
+                  <div className="text-xs" style={{color: RETRO.textDim}}>View conversions only</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant={unitCPU === "cores" ? "default" : "outline"} onClick={() => setUnitCPU("cores")}>cores</Button>
-                  <Button size="sm" variant={unitCPU === "millicores" ? "default" : "outline"} onClick={() => setUnitCPU("millicores")}>millicores</Button>
+                  <Button size="sm" className={unitCPU === "cores" ? "btn-retro" : "btn-outline-retro"} onClick={() => setUnitCPU("cores")}>cores</Button>
+                  <Button size="sm" className={unitCPU === "millicores" ? "btn-retro" : "btn-outline-retro"} onClick={() => setUnitCPU("millicores")}>millicores</Button>
                   <div className="w-2" />
-                  <Button size="sm" variant={unitMem === "GiB" ? "default" : "outline"} onClick={() => setUnitMem("GiB")}>GiB</Button>
-                  <Button size="sm" variant={unitMem === "MiB" ? "default" : "outline"} onClick={() => setUnitMem("MiB")}>MiB</Button>
+                  <Button size="sm" className={unitMem === "GiB" ? "btn-retro" : "btn-outline-retro"} onClick={() => setUnitMem("GiB")}>GiB</Button>
+                  <Button size="sm" className={unitMem === "MiB" ? "btn-retro" : "btn-outline-retro"} onClick={() => setUnitMem("MiB")}>MiB</Button>
                 </div>
               </div>
               <div className="mt-2 flex items-center gap-3">
                 <Switch id="stack" checked={stackByWorkload} onCheckedChange={setStackByWorkload} />
-                <Label htmlFor="stack" className="text-sm">Stack charts by workload groups</Label>
+                <Label htmlFor="stack" className="text-sm label-retro">Stack charts by workload groups</Label>
               </div>
             </div>
           </div>
@@ -272,28 +329,28 @@ export default function ClusterGrowthModeler() {
               <Droppable droppableId={cluster.id} key={cluster.id}>
                 {(provided) => (
                   <motion.div ref={provided.innerRef} {...provided.droppableProps} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                    <Card className="border-slate-200 shadow-sm">
+                    <Card className={`${retroCard} rounded-2xl scan-edge`}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0">
                         <div className="w-full max-w-md">
-                          <Label htmlFor={`name-${cluster.id}`} className="text-xs text-slate-500">Cluster Name</Label>
-                          <Input id={`name-${cluster.id}`} className="mt-1" value={cluster.name} onChange={(e) => updateClusterName(cluster.id, e.target.value)} />
+                          <Label htmlFor={`name-${cluster.id}`} className="text-xs label-retro">Cluster Name</Label>
+                          <Input id={`name-${cluster.id}`} className="mt-1 input-retro" value={cluster.name} onChange={(e) => updateClusterName(cluster.id, e.target.value)} />
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className="inline-flex items-center gap-2 rounded-full border bg-slate-50 px-3 py-1 text-xs">
-                            <span className="font-medium">CPU:</span>
+                          <div className={`${retroBadge} badge-retro inline-flex items-center gap-2`}>
+                            <span className="font-medium" style={{color: RETRO.accent3}}>CPU:</span>
                             <span>{fmtCPU((clusterTotals.find((t) => t.id === cluster.id)?.cpuCores) || 0)}</span>
                           </div>
-                          <div className="inline-flex items-center gap-2 rounded-full border bg-slate-50 px-3 py-1 text-xs">
-                            <span className="font-medium">Mem:</span>
+                          <div className={`${retroBadge} badge-retro inline-flex items-center gap-2`}>
+                            <span className="font-medium" style={{color: RETRO.accent2}}>Mem:</span>
                             <span>{fmtMem((clusterTotals.find((t) => t.id === cluster.id)?.memoryGiB) || 0)}</span>
                           </div>
-                          <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600" onClick={() => removeCluster(cluster.id)} aria-label="Remove cluster"><Trash2 className="h-5 w-5" /></Button>
+                          <Button variant="ghost" size="icon" className="hover:opacity-80" style={{color: RETRO.accent}} onClick={() => removeCluster(cluster.id)} aria-label="Remove cluster"><Trash2 className="h-5 w-5" /></Button>
                         </div>
                       </CardHeader>
                       <CardContent>
                         <table className="w-full text-sm">
-                          <thead className="bg-slate-50 text-left">
-                            <tr className="text-slate-600">
+                          <thead className="text-left" style={{color: RETRO.textDim}}>
+                            <tr>
                               <th className="px-3 py-2">Workload</th>
                               <th className="px-3 py-2">CPU (cores/replica)</th>
                               <th className="px-3 py-2">Memory (GiB/replica)</th>
@@ -305,12 +362,12 @@ export default function ClusterGrowthModeler() {
                             {cluster.workloads.map((w, idx) => (
                               <Draggable key={w.id} draggableId={w.id} index={idx}>
                                 {(drag) => (
-                                  <tr ref={drag.innerRef} {...drag.draggableProps} {...drag.dragHandleProps} className="border-t hover:bg-slate-50/40">
-                                    <td className="px-3 py-2"><Input value={w.name} onChange={(e) => setWorkloadField(cluster.id, w.id, "name", e.target.value)} /></td>
-                                    <td className="px-3 py-2"><Input type="number" inputMode="decimal" value={w.cpuCores} onChange={(e) => setWorkloadField(cluster.id, w.id, "cpuCores", Number(e.target.value))} /></td>
-                                    <td className="px-3 py-2"><Input type="number" inputMode="decimal" value={w.memoryGiB} onChange={(e) => setWorkloadField(cluster.id, w.id, "memoryGiB", Number(e.target.value))} /></td>
-                                    <td className="px-3 py-2"><Input type="number" inputMode="numeric" value={w.replicas} onChange={(e) => setWorkloadField(cluster.id, w.id, "replicas", Math.round(Number(e.target.value)))} /></td>
-                                    <td className="px-3 py-2 text-right"><Button variant="ghost" size="icon" className="text-red-500" onClick={() => removeWorkload(cluster.id, w.id)}><Trash2 className="h-4 w-4" /></Button></td>
+                                  <tr ref={drag.innerRef} {...drag.draggableProps} {...drag.dragHandleProps} className="border-t" style={{borderColor: RETRO.border}}>
+                                    <td className="px-3 py-2"><Input className="input-retro" value={w.name} onChange={(e) => setWorkloadField(cluster.id, w.id, "name", e.target.value)} /></td>
+                                    <td className="px-3 py-2"><Input className="input-retro" type="number" inputMode="decimal" value={w.cpuCores} onChange={(e) => setWorkloadField(cluster.id, w.id, "cpuCores", Number(e.target.value))} /></td>
+                                    <td className="px-3 py-2"><Input className="input-retro" type="number" inputMode="decimal" value={w.memoryGiB} onChange={(e) => setWorkloadField(cluster.id, w.id, "memoryGiB", Number(e.target.value))} /></td>
+                                    <td className="px-3 py-2"><Input className="input-retro" type="number" inputMode="numeric" value={w.replicas} onChange={(e) => setWorkloadField(cluster.id, w.id, "replicas", Math.round(Number(e.target.value)))} /></td>
+                                    <td className="px-3 py-2 text-right"><Button variant="ghost" size="icon" className="hover:opacity-80" style={{color: RETRO.accent}} onClick={() => removeWorkload(cluster.id, w.id)}><Trash2 className="h-4 w-4" /></Button></td>
                                   </tr>
                                 )}
                               </Draggable>
@@ -318,89 +375,66 @@ export default function ClusterGrowthModeler() {
                             {provided.placeholder}
                           </tbody>
                         </table>
-                        <div className="mt-2"><Button variant="secondary" onClick={() => addWorkload(cluster.id)}><Plus className="mr-2 h-4 w-4" /> Add Workload</Button></div>
+                        <div className="mt-2"><Button className="btn-retro" onClick={() => addWorkload(cluster.id)}><Plus className="mr-2 h-4 w-4" /> Add Workload</Button></div>
 
                         {/* Utilization vs Max (CPU & Memory) */}
                         {(() => {
                           const totals = clusterTotals.find((t) => t.id === cluster.id);
                           const usedCpu = totals?.cpuCores ?? 0;
                           const usedMem = totals?.memoryGiB ?? 0;
-
-                          // NOTE: your current model uses maxCPU / maxMem (cores / GiB)
-                          // const capCpu = cluster.maxCPU ?? 0;
-                          // const capMem = cluster.maxMem ?? 0;
-
                           const capCpu = cluster.maxCpuCores ?? 0;
                           const capMem = cluster.maxMemoryGiB ?? 0;
-
                           const cpuPct = capCpu > 0 ? Math.min(100, Math.round((usedCpu / capCpu) * 100)) : 0;
                           const memPct = capMem > 0 ? Math.min(100, Math.round((usedMem / capMem) * 100)) : 0;
-
                           const overCpu = capCpu > 0 && usedCpu > capCpu;
                           const overMem = capMem > 0 && usedMem > capMem;
-
                           return (
                             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <div className={`rounded-xl border px-3 py-2 text-xs ${overCpu ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
-                                <div className="flex justify-between">
-                                  <span className="font-medium">CPU Utilization</span>
-                                  <span>{capCpu > 0 ? `${cpuPct}%` : "—"}</span>
+                              <div className={`rounded-xl border px-3 py-2 text-xs ${overCpu ? "border-red-300" : ""}`} style={{borderColor: RETRO.border, background: RETRO.bg}}>
+                                <div className="flex justify-between"><span className="font-medium" style={{color: RETRO.accent3}}>CPU Utilization</span><span>{capCpu > 0 ? `${cpuPct}%` : "—"}</span></div>
+                                <div className="mt-1 h-2 w-full overflow-hidden rounded" style={{background: "#1a1a2a"}}>
+                                  <div className="h-2" style={{ width: `${capCpu > 0 ? cpuPct : 0}%`, background: overCpu ? RETRO.accent : RETRO.accent3 }} />
                                 </div>
-                                <div className="mt-1 h-2 w-full overflow-hidden rounded bg-slate-100">
-                                  <div
-                                    className={`${overCpu ? "bg-red-500" : "bg-slate-900"} h-2`}
-                                    style={{ width: `${capCpu > 0 ? cpuPct : 0}%` }}
-                                  />
-                                </div>
-                                <div className="mt-1 text-slate-600">
+                                <div className="mt-1" style={{color: RETRO.textDim}}>
                                   {fmtCPU(usedCpu)} / {capCpu > 0 ? fmtCPU(capCpu) : "no max set"}
                                 </div>
                               </div>
-
-                              <div className={`rounded-xl border px-3 py-2 text-xs ${overMem ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
-                                <div className="flex justify-between">
-                                  <span className="font-medium">Memory Utilization</span>
-                                  <span>{capMem > 0 ? `${memPct}%` : "—"}</span>
+                              <div className={`rounded-xl border px-3 py-2 text-xs ${overMem ? "border-red-300" : ""}`} style={{borderColor: RETRO.border, background: RETRO.bg}}>
+                                <div className="flex justify-between"><span className="font-medium" style={{color: RETRO.accent2}}>Memory Utilization</span><span>{capMem > 0 ? `${memPct}%` : "—"}</span></div>
+                                <div className="mt-1 h-2 w-full overflow-hidden rounded" style={{background: "#1a1a2a"}}>
+                                  <div className="h-2" style={{ width: `${capMem > 0 ? memPct : 0}%`, background: overMem ? RETRO.accent : RETRO.accent2 }} />
                                 </div>
-                                <div className="mt-1 h-2 w-full overflow-hidden rounded bg-slate-100">
-                                  <div
-                                    className={`${overMem ? "bg-red-500" : "bg-slate-900"} h-2`}
-                                    style={{ width: `${capMem > 0 ? memPct : 0}%` }}
-                                  />
-                                </div>
-                                <div className="mt-1 text-slate-600">
+                                <div className="mt-1" style={{color: RETRO.textDim}}>
                                   {fmtMem(usedMem)} / {capMem > 0 ? fmtMem(capMem) : "no max set"}
                                 </div>
                               </div>
                             </div>
                           );
                         })()}
+
                         {/* Cluster capacity inputs */}
                         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div>
-                            <Label className="text-xs text-slate-500">Max CPU (cores)</Label>
+                            <Label className="text-xs label-retro">Max CPU (cores)</Label>
                             <Input
+                              className="input-retro"
                               type="number"
                               inputMode="decimal"
                               value={cluster.maxCpuCores ?? 0}
-                              onChange={(e) =>
-                                setClusterCapacity(cluster.id, "maxCpuCores", Number(e.target.value))
-                              }
+                              onChange={(e) => updateClusterField(cluster.id, "maxCpuCores", Number(e.target.value))}
                             />
                           </div>
                           <div>
-                            <Label className="text-xs text-slate-500">Max Memory (GiB)</Label>
+                            <Label className="text-xs label-retro">Max Memory (GiB)</Label>
                             <Input
+                              className="input-retro"
                               type="number"
                               inputMode="decimal"
                               value={cluster.maxMemoryGiB ?? 0}
-                              onChange={(e) =>
-                                setClusterCapacity(cluster.id, "maxMemoryGiB", Number(e.target.value))
-                              }
+                              onChange={(e) => updateClusterField(cluster.id, "maxMemoryGiB", Number(e.target.value))}
                             />
                           </div>
                         </div>
-
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -411,27 +445,27 @@ export default function ClusterGrowthModeler() {
 
           {/* Charts */}
           <Tabs defaultValue="cpu" className="w-full mt-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="cpu">CPU</TabsTrigger>
-              <TabsTrigger value="mem">Memory</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2" style={{background: RETRO.panel, border: `1.5px solid ${RETRO.border}`}}>
+              <TabsTrigger value="cpu" className="pixel" style={{color: RETRO.text}}>CPU</TabsTrigger>
+              <TabsTrigger value="mem" className="pixel" style={{color: RETRO.text}}>Memory</TabsTrigger>
             </TabsList>
 
             <TabsContent value="cpu" className="mt-4">
-              <Card className="border-slate-200 shadow-sm">
+              <Card className={`${retroCard} rounded-2xl scan-edge`}>
                 <CardHeader>
-                  <CardTitle className="text-lg">CPU by Cluster {stackByWorkload ? "(stacked by workload)" : "(totals)"}</CardTitle>
+                  <CardTitle className="text-lg pixel" style={{color: RETRO.accent3}}>CPU by Cluster {stackByWorkload ? "(stacked by workload)" : "(totals)"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-80 w-full">
                     <ResponsiveContainer>
                       <BarChart data={chartDataCPU} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                        <XAxis dataKey="cluster" angle={-10} textAnchor="end" height={50} />
-                        <YAxis />
-                        <Tooltip formatter={(val) => (unitCPU === "millicores" ? `${val} m` : `${Number(val).toFixed(2)} cores`)} />
-                        <Legend />
+                        <XAxis dataKey="cluster" angle={-10} textAnchor="end" height={50} stroke={RETRO.textDim} tick={{ fill: RETRO.textDim }} />
+                        <YAxis stroke={RETRO.textDim} tick={{ fill: RETRO.textDim }} />
+                        <Tooltip contentStyle={{ background: RETRO.panel, border: `1px solid ${RETRO.border}`, color: RETRO.text }} />
+                        <Legend wrapperStyle={{ color: RETRO.text }} />
                         {stackByWorkload
-                          ? workloadKeys.map((k) => <Bar key={k} dataKey={k} stackId="cpu" />)
-                          : <Bar dataKey="total" />}
+                          ? workloadKeys.map((k, i) => <Bar key={k} dataKey={k} stackId="cpu" fill={BAR_COLORS[i % BAR_COLORS.length]} />)
+                          : <Bar dataKey="total" fill={RETRO.accent3} />}
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -440,21 +474,21 @@ export default function ClusterGrowthModeler() {
             </TabsContent>
 
             <TabsContent value="mem" className="mt-4">
-              <Card className="border-slate-200 shadow-sm">
+              <Card className={`${retroCard} rounded-2xl scan-edge`}>
                 <CardHeader>
-                  <CardTitle className="text-lg">Memory by Cluster {stackByWorkload ? "(stacked by workload)" : "(totals)"}</CardTitle>
+                  <CardTitle className="text-lg pixel" style={{color: RETRO.accent2}}>Memory by Cluster {stackByWorkload ? "(stacked by workload)" : "(totals)"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-80 w-full">
                     <ResponsiveContainer>
                       <BarChart data={chartDataMem} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                        <XAxis dataKey="cluster" angle={-10} textAnchor="end" height={50} />
-                        <YAxis />
-                        <Tooltip formatter={(val) => (unitMem === "MiB" ? `${val} MiB` : `${Number(val).toFixed(2)} GiB`)} />
-                        <Legend />
+                        <XAxis dataKey="cluster" angle={-10} textAnchor="end" height={50} stroke={RETRO.textDim} tick={{ fill: RETRO.textDim }} />
+                        <YAxis stroke={RETRO.textDim} tick={{ fill: RETRO.textDim }} />
+                        <Tooltip contentStyle={{ background: RETRO.panel, border: `1px solid ${RETRO.border}`, color: RETRO.text }} />
+                        <Legend wrapperStyle={{ color: RETRO.text }} />
                         {stackByWorkload
-                          ? workloadKeys.map((k) => <Bar key={k} dataKey={k} stackId="mem" />)
-                          : <Bar dataKey="total" />}
+                          ? workloadKeys.map((k, i) => <Bar key={k} dataKey={k} stackId="mem" fill={BAR_COLORS[i % BAR_COLORS.length]} />)
+                          : <Bar dataKey="total" fill={RETRO.accent2} />}
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -470,10 +504,10 @@ export default function ClusterGrowthModeler() {
 
 function Stat({ title, value, subtitle }) {
   return (
-    <div className="rounded-2xl border bg-white p-4 shadow-sm">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{title}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
-      {subtitle && <div className="text-xs text-slate-500">{subtitle}</div>}
+    <div className="rounded-2xl p-4 scan-edge" style={{ background: RETRO.panel, border: `1.5px solid ${RETRO.border}`, color: RETRO.text }}>
+      <div className="text-xs uppercase tracking-wide pixel" style={{ color: RETRO.textDim }}>{title}</div>
+      <div className="mt-1 text-2xl font-semibold pixel" style={{ color: RETRO.accent4 }}>{value}</div>
+      {subtitle && <div className="text-xs" style={{ color: RETRO.textDim }}>{subtitle}</div>}
     </div>
   );
 }
