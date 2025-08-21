@@ -42,7 +42,9 @@ export default function ClusterGrowthModeler() {
     return [
       {
         id: uid(),
-        name: "alva-prod",
+        name: "cluster-1",
+        maxCpuCores: 0,
+        maxMemoryGiB: 0,
         workloads: [
           { id: uid(), name: "web-frontend", cpuCores: 2, memoryGiB: 4, replicas: 5 },
           { id: uid(), name: "api-backend", cpuCores: 3, memoryGiB: 6, replicas: 3 },
@@ -51,7 +53,9 @@ export default function ClusterGrowthModeler() {
       },
       {
         id: uid(),
-        name: "rwcm-prod",
+        name: "cluster-2",
+        maxCpuCores: 0,
+        maxMemoryGiB: 0,
         workloads: [
           { id: uid(), name: "ingress-nginx", cpuCores: 1, memoryGiB: 1, replicas: 4 },
           { id: uid(), name: "metrics", cpuCores: 2, memoryGiB: 8, replicas: 2 },
@@ -125,8 +129,21 @@ export default function ClusterGrowthModeler() {
   }, [clusters]);
 
   // Mutators
-  const addCluster = () => setClusters((prev) => [...prev, { id: uid(), name: `cluster-${prev.length + 1}`, workloads: [] }]);
+  // const addCluster = () => setClusters((prev) => [...prev, { id: uid(), name: `cluster-${prev.length + 1}`, workloads: [] }]);
+  const addCluster = () =>
+  setClusters((prev) => [
+    ...prev,
+    { id: uid(), name: `cluster-${prev.length + 1}`, maxCpuCores: 0, maxMemoryGiB: 0, workloads: [] },
+  ]);
+
   const removeCluster = (cid) => setClusters((prev) => prev.filter((c) => c.id !== cid));
+
+  const setClusterCapacity = (cid, field, value) =>
+    setClusters((prev) =>
+      prev.map((c) => (c.id === cid ? { ...c, [field]: clampNum(value) } : c))
+    );
+
+
   const updateClusterName = (cid, name) => setClusters((prev) => prev.map((c) => (c.id === cid ? { ...c, name } : c)));
 
   const addWorkload = (cid) => {
@@ -302,6 +319,88 @@ export default function ClusterGrowthModeler() {
                           </tbody>
                         </table>
                         <div className="mt-2"><Button variant="secondary" onClick={() => addWorkload(cluster.id)}><Plus className="mr-2 h-4 w-4" /> Add Workload</Button></div>
+
+                        {/* Utilization vs Max (CPU & Memory) */}
+                        {(() => {
+                          const totals = clusterTotals.find((t) => t.id === cluster.id);
+                          const usedCpu = totals?.cpuCores ?? 0;
+                          const usedMem = totals?.memoryGiB ?? 0;
+
+                          // NOTE: your current model uses maxCPU / maxMem (cores / GiB)
+                          // const capCpu = cluster.maxCPU ?? 0;
+                          // const capMem = cluster.maxMem ?? 0;
+
+                          const capCpu = cluster.maxCpuCores ?? 0;
+                          const capMem = cluster.maxMemoryGiB ?? 0;
+
+                          const cpuPct = capCpu > 0 ? Math.min(100, Math.round((usedCpu / capCpu) * 100)) : 0;
+                          const memPct = capMem > 0 ? Math.min(100, Math.round((usedMem / capMem) * 100)) : 0;
+
+                          const overCpu = capCpu > 0 && usedCpu > capCpu;
+                          const overMem = capMem > 0 && usedMem > capMem;
+
+                          return (
+                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className={`rounded-xl border px-3 py-2 text-xs ${overCpu ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
+                                <div className="flex justify-between">
+                                  <span className="font-medium">CPU Utilization</span>
+                                  <span>{capCpu > 0 ? `${cpuPct}%` : "—"}</span>
+                                </div>
+                                <div className="mt-1 h-2 w-full overflow-hidden rounded bg-slate-100">
+                                  <div
+                                    className={`${overCpu ? "bg-red-500" : "bg-slate-900"} h-2`}
+                                    style={{ width: `${capCpu > 0 ? cpuPct : 0}%` }}
+                                  />
+                                </div>
+                                <div className="mt-1 text-slate-600">
+                                  {fmtCPU(usedCpu)} / {capCpu > 0 ? fmtCPU(capCpu) : "no max set"}
+                                </div>
+                              </div>
+
+                              <div className={`rounded-xl border px-3 py-2 text-xs ${overMem ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
+                                <div className="flex justify-between">
+                                  <span className="font-medium">Memory Utilization</span>
+                                  <span>{capMem > 0 ? `${memPct}%` : "—"}</span>
+                                </div>
+                                <div className="mt-1 h-2 w-full overflow-hidden rounded bg-slate-100">
+                                  <div
+                                    className={`${overMem ? "bg-red-500" : "bg-slate-900"} h-2`}
+                                    style={{ width: `${capMem > 0 ? memPct : 0}%` }}
+                                  />
+                                </div>
+                                <div className="mt-1 text-slate-600">
+                                  {fmtMem(usedMem)} / {capMem > 0 ? fmtMem(capMem) : "no max set"}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {/* Cluster capacity inputs */}
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label className="text-xs text-slate-500">Max CPU (cores)</Label>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              value={cluster.maxCpuCores ?? 0}
+                              onChange={(e) =>
+                                setClusterCapacity(cluster.id, "maxCpuCores", Number(e.target.value))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-slate-500">Max Memory (GiB)</Label>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              value={cluster.maxMemoryGiB ?? 0}
+                              onChange={(e) =>
+                                setClusterCapacity(cluster.id, "maxMemoryGiB", Number(e.target.value))
+                              }
+                            />
+                          </div>
+                        </div>
+
                       </CardContent>
                     </Card>
                   </motion.div>
