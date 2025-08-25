@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Prometheus → Multi‑cluster JSON for the K8s Growth Web App (Python 3)
@@ -21,7 +20,7 @@ import urllib.request
 CPU_QUERY = 'sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"})'
 MEM_QUERY = 'sum by (namespace) (kube_pod_container_resource_limits{resource="memory"})'
 
-PLATFORM_NS = {"kube-network", "monitoring", "kube-system", "logging", "twistlock", "ingress", "gatekeeper", "registry-creds-system", "system-upgrade", "norbert", "cert-manager"}
+DEFAULT_PLATFORM_NS = {"kube-network", "kube-system"}
 PLATFORM_BUCKET = "cluster-services"
 
 
@@ -71,7 +70,7 @@ def prom_instant_query(base_url, query, timeout, verify_tls, bearer_token):
     return data.get("data", {}).get("result", [])
 
 
-def aggregate_namespace_usage(cpu_vec, mem_vec):
+def aggregate_namespace_usage(cpu_vec, mem_vec, platform_ns):
     # Returns dict: ns -> {"cpuCores": float, "memGiB": float}
     usage = {}
 
@@ -82,7 +81,7 @@ def aggregate_namespace_usage(cpu_vec, mem_vec):
             continue
         val = s.get("value") or []
         cpu = _to_f(val[1] if len(val) > 1 else 0.0)
-        key = PLATFORM_BUCKET if ns in PLATFORM_NS else ns
+        key = PLATFORM_BUCKET if ns in platform_ns else ns
         rec = usage.setdefault(key, {"cpuCores": 0.0, "memGiB": 0.0})
         rec["cpuCores"] += cpu
 
@@ -93,7 +92,7 @@ def aggregate_namespace_usage(cpu_vec, mem_vec):
             continue
         val = s.get("value") or []
         mem_gib = _bytes_to_gib(val[1] if len(val) > 1 else 0.0)
-        key = PLATFORM_BUCKET if ns in PLATFORM_NS else ns
+        key = PLATFORM_BUCKET if ns in platform_ns else ns
         rec = usage.setdefault(key, {"cpuCores": 0.0, "memGiB": 0.0})
         rec["memGiB"] += mem_gib
 
@@ -127,6 +126,7 @@ def main():
     ap.add_argument("--out", default="k8s-cluster-growth.json", help="Output JSON file (default: %(default)s)")
     ap.add_argument("--timeout", type=int, default=30, help="HTTP timeout seconds (default: 30)")
     ap.add_argument("--insecure-skip-verify", action="store_true", help="Skip TLS verification for HTTPS endpoints")
+    ap.add_argument("--platform-ns-file", help="Optional JSON file containing list of platform namespaces to combine")
     args = ap.parse_args()
 
     # bearer token from env (applied to all Prom servers if present)
@@ -139,6 +139,18 @@ def main():
     except Exception as e:
         print("Failed to read mapping file: %s" % e, file=sys.stderr)
         sys.exit(1)
+
+    if args.platform_ns_file:
+        try:
+            with open(args.platform_ns_file, "r") as f:
+                platform_ns = json.load(f)
+            if not isinstance(platform_ns, list):
+                raise ValueError("platform-ns-file must contain a JSON list of namespaces")
+        except Exception as e:
+            print(f"Failed to read platform-ns-file, falling back to default: {e}", file=sys.stderr)
+            platform_ns = DEFAULT_PLATFORM_NS
+    else:
+        platform_ns = DEFAULT_PLATFORM_NS
 
     if not isinstance(mapping, list):
         print("--mapping-file must be a JSON array of objects", file=sys.stderr)
@@ -161,7 +173,7 @@ def main():
             print("[WARN] %s: failed to query Prometheus: %s" % (cname, e), file=sys.stderr)
             continue
 
-        usage = aggregate_namespace_usage(cpu_vec, mem_vec)
+        usage = aggregate_namespace_usage(cpu_vec, mem_vec, platform_ns)
         cluster_obj = build_cluster_object(cname, usage, capacity)
         clusters.append(cluster_obj)
 
