@@ -57,9 +57,9 @@ export default function ClusterGrowthModeler() {
     return [
       {
         id: uid(),
-        name: "alva-prod",
-        maxCpuCores: 100,
-        maxMemoryGiB: 500,
+        name: "cluster-1",
+        maxCpuCores: 600,
+        maxMemoryGiB: 1500,
         workloads: [
           { id: uid(), name: "web-frontend", cpuCores: 2, memoryGiB: 4, replicas: 5 },
           { id: uid(), name: "api-backend", cpuCores: 3, memoryGiB: 6, replicas: 3 },
@@ -68,9 +68,9 @@ export default function ClusterGrowthModeler() {
       },
       {
         id: uid(),
-        name: "rwcm-prod",
-        maxCpuCores: 80,
-        maxMemoryGiB: 300,
+        name: "cluster-2",
+        maxCpuCores: 800,
+        maxMemoryGiB: 2000,
         workloads: [
           { id: uid(), name: "ingress-nginx", cpuCores: 1, memoryGiB: 1, replicas: 4 },
           { id: uid(), name: "metrics", cpuCores: 2, memoryGiB: 8, replicas: 2 },
