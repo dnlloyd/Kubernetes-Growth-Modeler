@@ -36,7 +36,7 @@ def _to_f(x):
 
 
 def _bytes_to_gib(b):
-    return _to_f(b) / (1024.0 ** 2)
+    return _to_f(b) / (1024.0 ** 3)
 
 
 def build_url(base_url, path, params):
@@ -113,8 +113,8 @@ def build_cluster_object(cluster_name, usage, capacity):
         cluster["workloads"].append({
             "id": _uid(),
             "name": ns,
-            "cpuCores": float("%0.4f" % rec["cpuCores"]),
-            "memoryGiB": float("%0.4f" % rec["memGiB"]),
+            "cpuCores": float("%0.2f" % rec["cpuCores"]),
+            "memoryGiB": float("%0.2f" % rec["memGiB"]),
             "replicas": 1
         })
     return cluster
