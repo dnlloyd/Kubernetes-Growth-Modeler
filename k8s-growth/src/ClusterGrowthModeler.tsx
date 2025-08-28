@@ -105,8 +105,8 @@ export default function ClusterGrowthModeler() {
   }, [clusterTotals]);
 
   // Units
-  const fmtCPU = (cores) => (unitCPU === "millicores" ? `${Math.round(cores * 1000)} m` : `${Number(cores).toFixed(2)} cores`);
-  const fmtMem = (gib) => (unitMem === "MiB" ? `${Math.round(gib * 1024)} MiB` : `${Number(gib).toFixed(2)} GiB`);
+  const fmtCPU = (cores) => (unitCPU === "millicores" ? `${Math.round(cores * 1000)} m` : `${parseFloat(cores).toFixed(1)} cores`);
+  const fmtMem = (gib) => (unitMem === "MiB" ? `${Math.round(gib * 1024)} MiB` : `${parseFloat(gib).toFixed(0)} GiB`);
   const toUnitCPU = (cores) => (unitCPU === "millicores" ? cores * 1000 : cores);
   const toUnitMem = (gib) => (unitMem === "MiB" ? gib * 1024 : gib);
 
@@ -369,10 +369,12 @@ export default function ClusterGrowthModeler() {
                                     className="border-t"
                                     style={{ borderColor: RETRO.border, ...(drag.draggableProps.style || {}) }}
                                   >
-                                    <td className="px-3 py-2"><Input className="input-retro" value={w.name} onChange={(e) => setWorkloadField(cluster.id, w.id, "name", e.target.value)} /></td>
-                                    <td className="px-3 py-2"><Input className="input-retro" type="number" inputMode="decimal" value={w.cpuCores} onChange={(e) => setWorkloadField(cluster.id, w.id, "cpuCores", Number(e.target.value))} /></td>
-                                    <td className="px-3 py-2"><Input className="input-retro" type="number" inputMode="decimal" value={w.memoryGiB} onChange={(e) => setWorkloadField(cluster.id, w.id, "memoryGiB", Number(e.target.value))} /></td>
-                                    <td className="px-3 py-2"><Input className="input-retro" type="number" inputMode="numeric" value={w.replicas} onChange={(e) => setWorkloadField(cluster.id, w.id, "replicas", Math.round(Number(e.target.value)))} /></td>
+                                    <td className="px-3 py-2">
+                                      <Input className="input-retro w-41" value={w.name} onChange={(e) => setWorkloadField(cluster.id, w.id, "name", e.target.value)} />
+                                    </td>
+                                    <td className="px-3 py-2"><Input className="input-retro w-22" type="number" inputMode="decimal" value={w.cpuCores} onChange={(e) => setWorkloadField(cluster.id, w.id, "cpuCores", Number(e.target.value))} /></td>
+                                    <td className="px-3 py-2"><Input className="input-retro w-24" type="number" inputMode="decimal" value={w.memoryGiB} onChange={(e) => setWorkloadField(cluster.id, w.id, "memoryGiB", Number(e.target.value))} /></td>
+                                    <td className="px-3 py-2"><Input className="input-retro w-15" type="number" inputMode="numeric" value={w.replicas} onChange={(e) => setWorkloadField(cluster.id, w.id, "replicas", Math.round(Number(e.target.value)))} /></td>
                                     <td className="px-3 py-2 text-right"><Button variant="ghost" size="icon" className="hover:opacity-80" style={{color: RETRO.accent}} onClick={() => removeWorkload(cluster.id, w.id)}><Trash2 className="h-4 w-4" /></Button></td>
                                   </tr>
                                 )}

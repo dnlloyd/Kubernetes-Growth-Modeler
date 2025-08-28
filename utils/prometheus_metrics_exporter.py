@@ -36,7 +36,7 @@ def _to_f(x):
 
 
 def _bytes_to_gib(b):
-    return _to_f(b) / (1024.0 ** 3)
+    return _to_f(b) / (1024.0 ** 2)
 
 
 def build_url(base_url, path, params):
