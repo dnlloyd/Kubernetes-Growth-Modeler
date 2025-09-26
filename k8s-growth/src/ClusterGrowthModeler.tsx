@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Download, Upload } from "lucide-react";
+import { Plus, Trash2, Download, Upload, Github  } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -82,6 +82,9 @@ export default function ClusterGrowthModeler() {
   const [stackByWorkload, setStackByWorkload] = useState(true);
   const [unitCPU, setUnitCPU] = useState("cores"); // "cores" | "millicores"
   const [unitMem, setUnitMem] = useState("GiB"); // "GiB" | "MiB"
+
+  const [showCapacity, setShowCapacity] = useState(true);
+  const REPO_URL = "https://github.com/dnlloyd/Kubernetes-Growth-Modeler";
 
   useEffect(() => {
     try {
@@ -245,12 +248,21 @@ export default function ClusterGrowthModeler() {
           color: ${RETRO.text};
         }
         .btn-retro:hover { box-shadow: 0 0 0 2px ${RETRO.accent}33 inset; }
+
         .btn-outline-retro {
           border: 1.5px solid ${RETRO.accent3};
           color: ${RETRO.accent3};
           background: transparent;
         }
         .btn-outline-retro:hover { background: ${RETRO.accent3}11; }
+
+        .btn-outline-retro-orange {
+          border: 1.5px solid ${RETRO.accent2};
+          color: ${RETRO.accent2};
+          background: transparent;
+        }
+        .btn-outline-retro-orange:hover { background: ${RETRO.accent2}11; }
+
         .input-retro {
           background: ${RETRO.bg};
           border: 1.5px solid ${RETRO.border};
@@ -295,6 +307,15 @@ export default function ClusterGrowthModeler() {
                   });
                 }} />
               </label>
+
+              <Button
+                className="btn-outline-retro-orange"
+                aria-pressed={showCapacity ? "true" : "false"}
+                onClick={() => setShowCapacity((v) => !v)}
+              >
+                {showCapacity ? "Hide Capacity" : "Show Capacity"}
+              </Button>
+
             </div>
           </header>
 
@@ -331,7 +352,7 @@ export default function ClusterGrowthModeler() {
                   <CardHeader className="flex flex-row items-center justify-between space-y-0">
                     <div className="w-full max-w-md">
                       <Label htmlFor={`name-${cluster.id}`} className="text-xs label-retro">Cluster Name</Label>
-                      <Input id={`name-${cluster.id}`} className="mt-1 input-retro" value={cluster.name} onChange={(e) => updateClusterName(cluster.id, e.target.value)} />
+                      <Input id={`name-${cluster.id}`} className="mt-1 input-retro w-56" value={cluster.name} onChange={(e) => updateClusterName(cluster.id, e.target.value)} />
                     </div>
                     <div className="flex items-center gap-2">
                       <div className={`${retroBadge} badge-retro inline-flex items-center gap-2`}>
@@ -387,64 +408,74 @@ export default function ClusterGrowthModeler() {
                     </table>
                     <div className="mt-2"><Button className="btn-retro" onClick={() => addWorkload(cluster.id)}><Plus className="mr-2 h-4 w-4" /> Add Workload</Button></div>
 
-                    {/* Utilization vs Max (CPU & Memory) */}
-                    {(() => {
-                      const totals = clusterTotals.find((t) => t.id === cluster.id);
-                      const usedCpu = totals?.cpuCores ?? 0;
-                      const usedMem = totals?.memoryGiB ?? 0;
-                      const capCpu = clusters.find(c=>c.id===cluster.id)?.maxCpuCores ?? 0;
-                      const capMem = clusters.find(c=>c.id===cluster.id)?.maxMemoryGiB ?? 0;
-                      const cpuPct = capCpu > 0 ? Math.min(100, Math.round((usedCpu / capCpu) * 100)) : 0;
-                      const memPct = capMem > 0 ? Math.min(100, Math.round((usedMem / capMem) * 100)) : 0;
-                      const overCpu = capCpu > 0 && usedCpu > capCpu;
-                      const overMem = capMem > 0 && usedMem > capMem;
-                      return (
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <div className={`rounded-xl border px-3 py-2 text-xs ${overCpu ? "border-red-300" : ""}`} style={{borderColor: RETRO.border, background: RETRO.bg}}>
-                            <div className="flex justify-between"><span className="font-medium" style={{color: RETRO.accent3}}>CPU Utilization</span><span>{capCpu > 0 ? `${cpuPct}%` : "—"}</span></div>
-                            <div className="mt-1 h-2 w-full overflow-hidden rounded" style={{background: "#1a1a2a"}}>
-                              <div className="h-2" style={{ width: `${capCpu > 0 ? cpuPct : 0}%`, background: overCpu ? RETRO.accent : RETRO.accent3 }} />
+                    {showCapacity && (
+                      <>
+                        {/* Utilization vs Max (CPU & Memory) */}
+                        {(() => {
+                          const totals = clusterTotals.find((t) => t.id === cluster.id);
+                          const usedCpu = totals?.cpuCores ?? 0;
+                          const usedMem = totals?.memoryGiB ?? 0;
+                          const capCpu = clusters.find((c) => c.id === cluster.id)?.maxCpuCores ?? 0;
+                          const capMem = clusters.find((c) => c.id === cluster.id)?.maxMemoryGiB ?? 0;
+                          const cpuPct = capCpu > 0 ? Math.min(100, Math.round((usedCpu / capCpu) * 100)) : 0;
+                          const memPct = capMem > 0 ? Math.min(100, Math.round((usedMem / capMem) * 100)) : 0;
+                          const overCpu = capCpu > 0 && usedCpu > capCpu;
+                          const overMem = capMem > 0 && usedMem > capMem;
+                          return (
+                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className={`rounded-xl border px-3 py-2 text-xs ${overCpu ? "border-red-300" : ""}`} style={{borderColor: RETRO.border, background: RETRO.bg}}>
+                                <div className="flex justify-between"><span className="font-medium" style={{color: RETRO.accent3}}>CPU Utilization</span><span>{capCpu > 0 ? `${cpuPct}%` : "—"}</span></div>
+                                <div className="mt-1 h-2 w-full overflow-hidden rounded" style={{background: "#1a1a2a"}}>
+                                  <div className="h-2" style={{ width: `${capCpu > 0 ? cpuPct : 0}%`, background: overCpu ? RETRO.accent : RETRO.accent3 }} />
+                                </div>
+                                <div className="mt-1" style={{color: RETRO.textDim}}>
+                                  {fmtCPU(usedCpu)} / {capCpu > 0 ? fmtCPU(capCpu) : "no max set"}
+                                </div>
+                              </div>
+                              <div className={`rounded-xl border px-3 py-2 text-xs ${overMem ? "border-red-300" : ""}`} style={{borderColor: RETRO.border, background: RETRO.bg}}>
+                                <div className="flex justify-between"><span className="font-medium" style={{color: RETRO.accent2}}>Memory Utilization</span><span>{capMem > 0 ? `${memPct}%` : "—"}</span></div>
+                                <div className="mt-1 h-2 w-full overflow-hidden rounded" style={{background: "#1a1a2a"}}>
+                                  <div className="h-2" style={{ width: `${capMem > 0 ? memPct : 0}%`, background: overMem ? RETRO.accent : RETRO.accent2 }} />
+                                </div>
+                                <div className="mt-1" style={{color: RETRO.textDim}}>
+                                  {fmtMem(usedMem)} / {capMem > 0 ? fmtMem(capMem) : "no max set"}
+                                </div>
+                              </div>
                             </div>
-                            <div className="mt-1" style={{color: RETRO.textDim}}>
-                              {fmtCPU(usedCpu)} / {capCpu > 0 ? fmtCPU(capCpu) : "no max set"}
-                            </div>
-                          </div>
-                          <div className={`rounded-xl border px-3 py-2 text-xs ${overMem ? "border-red-300" : ""}`} style={{borderColor: RETRO.border, background: RETRO.bg}}>
-                            <div className="flex justify-between"><span className="font-medium" style={{color: RETRO.accent2}}>Memory Utilization</span><span>{capMem > 0 ? `${memPct}%` : "—"}</span></div>
-                            <div className="mt-1 h-2 w-full overflow-hidden rounded" style={{background: "#1a1a2a"}}>
-                              <div className="h-2" style={{ width: `${capMem > 0 ? memPct : 0}%`, background: overMem ? RETRO.accent : RETRO.accent2 }} />
-                            </div>
-                            <div className="mt-1" style={{color: RETRO.textDim}}>
-                              {fmtMem(usedMem)} / {capMem > 0 ? fmtMem(capMem) : "no max set"}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
+                          );
+                        })()}
+                      </>
+                    )}
 
-                    {/* Cluster capacity inputs */}
-                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div>
-                        <Label className="text-xs label-retro">Max CPU (cores)</Label>
-                        <Input
-                          className="input-retro"
-                          type="number"
-                          inputMode="decimal"
-                          value={cluster.maxCpuCores ?? 0}
-                          onChange={(e) => updateClusterField(cluster.id, "maxCpuCores", Number(e.target.value))}
-                        />
+
+                    {showCapacity && (
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label className="text-xs label-retro">Max CPU (cores)</Label>
+                          <Input
+                            className="input-retro"
+                            type="number"
+                            inputMode="decimal"
+                            value={cluster.maxCpuCores ?? 0}
+                            onChange={(e) => updateClusterField(cluster.id, "maxCpuCores", Number(e.target.value))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs label-retro">Max Memory (GiB)</Label>
+                          <Input
+                            className="input-retro"
+                            type="number"
+                            inputMode="decimal"
+                            value={cluster.maxMemoryGiB ?? 0}
+                            onChange={(e) => updateClusterField(cluster.id, "maxMemoryGiB", Number(e.target.value))}
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <Label className="text-xs label-retro">Max Memory (GiB)</Label>
-                        <Input
-                          className="input-retro"
-                          type="number"
-                          inputMode="decimal"
-                          value={cluster.maxMemoryGiB ?? 0}
-                          onChange={(e) => updateClusterField(cluster.id, "maxMemoryGiB", Number(e.target.value))}
-                        />
-                      </div>
-                    </div>
+                    )}
+
+
+
+
                   </CardContent>
                 </Card>
               </motion.div>
@@ -504,7 +535,28 @@ export default function ClusterGrowthModeler() {
               </Card>
             </TabsContent>
           </Tabs>
+
+          <footer className="mt-10 flex justify-center">
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View source on GitHub"
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 transition"
+              style={{
+                border: `1.5px solid ${RETRO.accent4}`,
+                background: `${RETRO.panel}`,
+                color: RETRO.text,
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.02)",
+              }}
+            >
+              <Github className="h-5 w-5" />
+              <span className="pixel">Source on GitHub</span>
+            </a>
+          </footer>
+        <div><p className="text-sm" style={{color: RETRO.textDim}}>© 2025 Daniel R. Lloyd </p></div>
         </div>
+        
       </div>
     </DragDropContext>
   );

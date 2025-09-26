@@ -60,7 +60,7 @@ npm run build
 ### Scripted
 
 ```bash
-deploy.sh E1E345POA9DNH3
+./deploy.sh E1E345POA9DNH3
 ```
 
 ### Manual
